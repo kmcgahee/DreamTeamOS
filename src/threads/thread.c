@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -27,6 +28,9 @@ static struct list ready_list;
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
+
+/* List of context information about sleeping processes. */
+static struct list sleeping_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -92,6 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleeping_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -123,6 +128,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
+  struct list_elem *e = NULL;
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -133,6 +139,21 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+    
+  /* Wake up threads that are ready to be woken up */
+  for (e = list_begin (&sleeping_list);
+       e != list_end (&sleeping_list);
+       e = list_next (e))
+  {
+    struct sleep_context * sleep_info = list_entry (e, struct sleep_context, elem);
+    
+    if (timer_elapsed (sleep_info->start_ticks) >= sleep_info->sleep_ticks)
+    {
+        /* Done sleeping so remove from sleeping list and signal wakeup */
+        list_remove (e);
+        sema_up (&(sleep_info->sema));
+    }
+  }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -248,6 +269,30 @@ thread_unblock (struct thread *t)
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+}
+
+/* Puts the current thread to sleep for 'ticks' number of ticks
+   and adds the sleep context information to list of sleeping 
+   processes.
+
+   Interrupts must be disabled. */
+void
+thread_sleep (int64_t ticks)
+{
+  if (ticks <= 0)
+    return;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+ 
+  struct thread *t = thread_current ();
+  
+  t->sleep_info.start_ticks = timer_ticks();
+  t->sleep_info.sleep_ticks = ticks;
+  
+  list_push_back (&sleeping_list, &t->sleep_info.elem);
+  
+  /* Block current thread until specified number of 'ticks' elapses */
+  sema_down (&t->sleep_info.sema);
 }
 
 /* Returns the name of the running thread. */
@@ -468,6 +513,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  sema_init (&t->sleep_info.sema, 0);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
