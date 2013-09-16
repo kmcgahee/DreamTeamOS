@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -95,6 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleeping_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -126,6 +128,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
+  struct list_elem *e = NULL;
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -138,7 +141,7 @@ thread_tick (void)
     kernel_ticks++;
     
   /* Wake up threads that are ready to be woken up */
-  for (struct list_elem *e = list_begin (&sleeping_list);
+  for (e = list_begin (&sleeping_list);
        e != list_end (&sleeping_list);
        e = list_next (e))
   {
@@ -270,11 +273,18 @@ thread_unblock (struct thread *t)
 
 /* Puts the current thread to sleep for 'ticks' number of ticks
    and adds the sleep context information to list of sleeping 
-   processes. */
+   processes.
+
+   Interrupts must be disabled. */
 void
 thread_sleep (int64_t ticks)
 {
-  struct thread *t = thread_current();
+  if (ticks <= 0)
+    return;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+ 
+  struct thread *t = thread_current ();
   
   t->sleep_info.start_ticks = timer_ticks();
   t->sleep_info.sleep_ticks = ticks;
@@ -282,7 +292,7 @@ thread_sleep (int64_t ticks)
   list_push_back (&sleeping_list, &t->sleep_info.elem);
   
   /* Block current thread until specified number of 'ticks' elapses */
-  sema_down(&(t->sleep_info.sema));
+  sema_down (&t->sleep_info.sema);
 }
 
 /* Returns the name of the running thread. */
@@ -503,7 +513,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  init_sema(&(t->sleep_info.sema), 0);
+  sema_init (&t->sleep_info.sema, 0);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }

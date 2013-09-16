@@ -79,6 +79,14 @@ without affecting the semaphore and times of other threads.
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
 
+Interrupts are temporarily disabled before calling thread_sleep().
+This ensures that a data race condition cannot occur when the start 
+and end ticks are being stored and between adding the sleep context
+to the list and calling sema_down().  
+
+At the completion of timer_sleep() the interrupt status is returned
+to what is was before the function was called.
+
 
 ---- RATIONALE ----
 
