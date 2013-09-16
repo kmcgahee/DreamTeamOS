@@ -1,0 +1,186 @@
+
+CIS 520 - Programming Project #1
+
+                   
+---- GROUP ----
+
+Kyle  McGahee  kmcgahee@ksu.edu
+Matt  Roselli  mroselli@ksu.edu
+Jacob Kongs    jmkongs@ksu.edu
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for
+>> the TA, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation,
+>> course text, lecture notes, and course staff.
+
+
+                 ALARM CLOCK
+                 ===========
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less
+
+PURPOSE: Wraps all information and semaphore needed to implement efficient thread sleeping.
+struct sleep_context
+{
+    struct semaphore sema;   /* Semaphore used for blocking sleeping thread. */
+    int64_t start_ticks;     /* Ticks at start of sleep command. */
+    int64_t sleep_ticks;     /* Number of ticks to sleep. */
+    struct list_elem elem;   /* List element for context of sleeping threads. */
+};
+
+PURPOSE: Allow threads to track information on a 'per-thread' basis to eliminate
+         multiple sleep race conditions.
+struct thread
+{
+    ...
+    ...
+    struct sleep_context sleep_info;    /* Sleeping context information */
+    ...
+};
+
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to your timer_sleep(),
+>> including the effects of the timer interrupt handler.
+
+The timer_sleep() method does a some sanity checks and then calls off to 
+thread_sleep() which stores sleeping information and adds thread sleeping
+context to a list and then blocks the thread with the sema_down() function.
+When the timer tick ISR fires it checks through the list of sleeping threads 
+and if the correct number of ticks has elapsed then the thread is woken up 
+with the sema_up() function.
+
+>> A3: What steps are taken to minimize the amount of time spent in
+>> the timer interrupt handler?
+
+The sleeping threads are tracked in their own list, thus eliminating the need
+to iterate through every thread and check if it is asleep and then if it needs
+to be woken up.  This scales much better to a large system with many threads.
+
+
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+
+Each thread tracks implements self-blocking with its own independently
+owned semaphore.  This means that multiple threads can call timer_sleep()
+without affecting the semaphore and times of other threads.
+
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> other designs that you considered?
+
+Other design choices that were considered were placing all sleep specific 
+information directly in the struct itself and adding a flag into each 
+thread marking whether or not the sleep info was valid, then iterating
+through all threads in the ISR and checking the flag.  The reason the 
+implemented design was chosen is listed below.
+
+The design was chosen because it accomplished two goals...
+
+1) It logically wrapped all information relating to sleeping into a struct
+   to keep from littering the thread struct with multiple field related field
+   definitions.  It also allows for easier to read code when de-referencing 
+   the sleep info data as the field name is then explicitly stated in the code.
+   
+2) Creating a new list for tracking sleeping threads allows for a more elegant
+   solution than brute-force iterating through every thread and checking a flag
+   if the thread is asleep or not.  It also eliminates the need for 
+   the 'sleeping' flag mentioned above because the act of being in the list 
+   denotes that the thread is currently sleeping.
+
+
+             PRIORITY SCHEDULING
+             ===================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+>> B2: Explain the data structure used to track priority donation.
+
+
+---- ALGORITHMS ----
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+
+---- SYNCHRONIZATION ----
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+
+---- RATIONALE ----
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+
+              ADVANCED SCHEDULER [EXTRA CREDIT]
+              =================================
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+---- ALGORITHMS ----
+
+>> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
+>> has a recent_cpu value of 0.  Fill in the table below showing the
+>> scheduling decision and the priority and recent_cpu values for each
+>> thread after each given number of timer ticks:
+
+timer  recent_cpu    priority   thread
+ticks   A   B   C   A   B   C   to run
+-----  --  --  --  --  --  --   ------
+ 0
+ 4
+ 8
+12
+16
+20
+24
+28
+32
+36
+
+>> C3: Did any ambiguities in the scheduler specification make values
+>> in the table uncertain?  If so, what rule did you use to resolve
+>> them?  Does this match the behavior of your scheduler?
+
+>> C4: How is the way you divided the cost of scheduling between code
+>> inside and outside interrupt context likely to affect performance?
+
+---- RATIONALE ----
+
+>> C5: Briefly critique your design, pointing out advantages and
+>> disadvantages in your design choices.  If you were to have extra
+>> time to work on this part of the project, how might you choose to
+>> refine or improve your design?
+
