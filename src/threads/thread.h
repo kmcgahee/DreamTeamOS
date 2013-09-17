@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -68,12 +69,22 @@ typedef int tid_t;
          structures or arrays as non-static local variables.  Use
          dynamic allocation with malloc() or palloc_get_page()
          instead.
-
+         
    The first symptom of either of these problems will probably be
    an assertion failure in thread_current(), which checks that
    the `magic' member of the running thread's `struct thread' is
    set to THREAD_MAGIC.  Stack overflow will normally change this
    value, triggering the assertion. */
+         
+/* Information about current state of sleeping thread */
+struct sleep_context
+{
+    struct semaphore sema;   /* Semaphore used for blocking sleeping thread. */
+    int64_t start_ticks;     /* Ticks at start of sleep command. */
+    int64_t sleep_ticks;     /* Number of ticks to sleep. */
+    struct list_elem elem;   /* List element for context of sleeping threads. */
+};
+
 /* The `elem' member has a dual purpose.  It can be an element in
    the run queue (thread.c), or it can be an element in a
    semaphore wait list (synch.c).  It can be used these two ways
@@ -88,6 +99,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    struct sleep_context sleep_info;    /* Sleeping context information */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -118,6 +130,8 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+void thread_sleep (int64_t ticks);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
