@@ -75,7 +75,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static bool
+bool
 priority_more (const struct list_elem *a_, const struct list_elem *b_,
             void *aux UNUSED) 
 {
@@ -277,8 +277,19 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   //list_push_back (&ready_list, &t->elem);
-  list_insert_ordered( &ready_list, &t->elem, priority_more, t->priority ); // todo: consider using aux
+  list_insert_ordered( &ready_list, &t->elem, priority_more, NULL ); // todo: consider using aux
   t->status = THREAD_READY;
+
+  struct thread *y = list_entry( list_begin( &ready_list ), struct thread, elem );
+  if( thread_current() != idle_thread && y->priority > thread_current()->priority )
+  {
+    //printf( "Yield %s %d to %s %d \n\r", thread_current()->name, thread_current()->priority, y->name, y->priority ); 
+    //list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered( &ready_list, &thread_current()->elem, priority_more, NULL ); // todo: consider using aux
+    thread_current()->status = THREAD_READY;
+    schedule ();
+  }
+
   intr_set_level (old_level);
 }
 
@@ -373,7 +384,7 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread) 
     //list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered( &ready_list, &cur->elem, priority_more, cur->priority ); // todo: consider using aux
+    list_insert_ordered( &ready_list, &cur->elem, priority_more, NULL ); // todo: consider using aux
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -400,7 +411,45 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  thread_current()->priority = new_priority;
+  thread_yield();
+/*
+  struct thread *cur;
+  int old_pri;
+  cur = thread_current();
+  old_pri = cur->priority;
+  
+  struct list_elem *insert = NULL;
+  struct list_elem *stuff;
+  struct list_elem *elem;
+
+  if( new_priority == old_pri )
+    return;
+
+  if( new_priority > cur->priority )
+  {
+    // move it on up (front)
+    elem = cur->elem.prev;
+    while( elem.prev != NULL && cur->priority > list_entry( elem.prev, thread, elem )->priority )
+    {
+      insert = elem;
+      elem = elem.prev;
+    }
+
+    // delete
+    cur->elem->prev.next = cur->elem.next;
+    cur->elem->next.prev = cur->elem.prev;
+
+    //insert
+    stuff = elem.next;
+    elem.next = 
+  }
+  else
+  {
+    // move it on down (back)
+    
+  }
+*/
 }
 
 /* Returns the current thread's priority. */
