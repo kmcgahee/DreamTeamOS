@@ -452,6 +452,26 @@ thread_set_priority (int new_priority)
 */
 }
 
+/* TODO */
+void
+thread_donate_priority (struct thread_t * t, int donated_priority) 
+{
+  if (t == NULL)
+      return;
+  
+  ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
+  
+  t->inherited_priority = donated_priority;
+  
+  /* Propogate donated priority. */
+  /* The key piece of information that we're missing is 
+     what thread 't' is waiting on.  If we knew that we could
+     make a recursive call like 
+     thread_donate_priority ("t blocker thread", donated_priority); 
+     I still need to do controls so I'm calling it good for the night. */     
+   
+}
+
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
@@ -574,6 +594,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->inherited_priority = PRI_MIN;
   sema_init (&t->sleep_info.sema, 0);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);

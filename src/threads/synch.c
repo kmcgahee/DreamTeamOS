@@ -203,7 +203,21 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
+  /* Try to get mutex. If we fail then some other thread has
+     what we need. If that thread has a lower priority than us
+     we need to bump up it's priority.  But we also need to bump
+     up the priority of anyone that thread is waiting on.  So 
+     'bumping up' (or donating) priorities is a recursive process. */
+  if (!try_sema_down (lock->semaphore))
+  {
+     // KLM: We need to create a function/macro for getting the 
+     //      'effective' priority of a thread.
+     if (lock->holder->priority < thread_get_priority ())
+        thread_donate_priority (lock->holder, thread_get_priority ());
+        
+     sema_down (lock->semaphore);
+  }
+  
   lock->holder = thread_current ();
 }
 
@@ -238,6 +252,9 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  /* Done with lock so need to reset inherited priority */
+  lock->holder->inherited_priority = PRI_MIN;
+  
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

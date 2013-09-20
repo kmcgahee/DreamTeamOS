@@ -99,6 +99,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int inherited_priority;             /* Temporary bumped up priority level. */
+                                        /* 'PRI_MIN' priority level for none. */
     struct sleep_context sleep_info;    /* Sleeping context information */
     struct list_elem allelem;           /* List element for all threads list. */
 
