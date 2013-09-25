@@ -98,11 +98,13 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    int inherited_priority;             /* Temporary bumped up priority level. */
-                                        /* 'PRI_MIN' priority level for none. */
-    struct sleep_context sleep_info;    /* Sleeping context information */
+    int priority;                       /* Effective priority level. */
+    int org_priority;                   /* Original priority level. */
+    struct sleep_context sleep_info;    /* Sleeping context information. */
     struct list_elem allelem;           /* List element for all threads list. */
+    
+    struct list owned_locks;            /* List of locks owned by this thread. */
+    struct lock * blocking_lock;        /* Lock that is blocking this thread. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

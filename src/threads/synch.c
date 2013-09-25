@@ -204,19 +204,22 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   /* Try to get mutex. If we fail then some other thread has
-     what we need. If that thread has a lower priority than us
-     we need to bump up it's priority.  But we also need to bump
-     up the priority of anyone that thread is waiting on.  So 
-     'bumping up' (or donating) priorities is a recursive process. */
+     what we need. */
   if (!try_sema_down (lock->semaphore))
   {
-     // KLM: We need to create a function/macro for getting the 
-     //      'effective' priority of a thread.
-     if (lock->holder->priority < thread_get_priority ())
-        thread_donate_priority (lock->holder, thread_get_priority ());
-        
-     sema_down (lock->semaphore);
+    /* Propogate current thread's priority to lower priority threads */
+    thread_donate_priority (lock->holder, thread_get_priority ());
+     
+    /* Record that owner of lock is blocking us so later we can
+       propogate priorities */
+    thread_current ()->blocking_lock = lock->holder;
+       
+    sema_down (lock->semaphore);
   }
+  
+  /* Record that we now own lock so can later find what priority to 
+     set to when releasing lock */
+  list_push_back (&thread_current ()->owned_locks, &lock->elem);
   
   lock->holder = thread_current ();
 }
@@ -251,11 +254,39 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
-  /* Done with lock so need to reset inherited priority */
-  lock->holder->inherited_priority = PRI_MIN;
+  
+  /* Need to figure out what to set effective priority
+     to before releasing lock. */
+  int max_priority = PRI_MIN;
+  for (e = list_begin (&lock->holder->owned_locks);
+       e != list_end (&lock->holder->owned_locks);
+       e = list_next (e))
+  {
+    struct lock const * owned_lock = list_entry (e, struct lock, elem);
+    
+    /* Since waiters are sorted front will always have high priority */
+    struct thread const * max_waiting_thread = list_entry (
+                             list_front ((owned_lock->semaphore).waiters),
+                             struct thread,
+                             elem);
+                         
+    // KLM: I think we should implement max/min functions.  Just not 
+    //      sure where is best.
+    max_priority = max (max_priority, max_waiting_thread->priority);
+  }
+  
+  lock->holder->priority = max (max_priority, original_priority);
+  
+  // KLM: TODO:
+  // Need to know who is about to run from sema_up() call so we 
+  // set 'blocking_lock' pointer to NULL for that thread. 
+  // Maybe split off function to return thread?
+  
+  /* Remove lock from list of owned locks for previous owner */
+  list_remove (
   
   lock->holder = NULL;
+  
   sema_up (&lock->semaphore);
 }
 

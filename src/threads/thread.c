@@ -412,6 +412,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current()->priority = new_priority;
+  thread_current()->org_priority = new_priority;
   thread_yield();
 /*
   struct thread *cur;
@@ -452,23 +453,22 @@ thread_set_priority (int new_priority)
 */
 }
 
-/* TODO */
+/* Recursively donates specific priority through blocked threads until
+   reaches an un-blocked thread or a greater than or equal to priority */
 void
 thread_donate_priority (struct thread_t * t, int donated_priority) 
 {
-  if (t == NULL)
+  if (t == NULL || (t->priority >= donated_priority))
       return;
   
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   
-  t->inherited_priority = donated_priority;
+  t->priority = donated_priority;
   
-  /* Propogate donated priority. */
-  /* The key piece of information that we're missing is 
-     what thread 't' is waiting on.  If we knew that we could
-     make a recursive call like 
-     thread_donate_priority ("t blocker thread", donated_priority); 
-     I still need to do controls so I'm calling it good for the night. */     
+  /* If thread is blocked by another lock then propagate priority */
+  thread_donate_priority (
+                !t->blocking_lock ? NULL : t->blocking_lock->holder,
+                donated_priority);
    
 }
 
@@ -594,7 +594,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->inherited_priority = PRI_MIN;
+  t->org_priority = priority;
+  init_list(&t->owned_locks);
+  t->blocking_thread = NULL;
   sema_init (&t->sleep_info.sema, 0);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
