@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 /* Standard functions. */
+int max (int one, int two); 
 int atoi (const char *);
 void qsort (void *array, size_t cnt, size_t size,
             int (*compare) (const void *, const void *));

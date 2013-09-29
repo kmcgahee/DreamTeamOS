@@ -4,6 +4,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+/* Returns maximum between two integers.  If same then returns
+   first passed in integer. */
+int
+max (int one, int two) 
+{
+  return (one >= two ? one : two);
+}
+
 /* Converts a string representation of a signed decimal integer
    in S into an `int', which is returned. */
 int
