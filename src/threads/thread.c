@@ -467,9 +467,8 @@ thread_donate_priority (struct thread_t * t, int donated_priority)
   
   /* If thread is blocked by another lock then propagate priority */
   thread_donate_priority (
-                !t->blocking_lock ? NULL : t->blocking_lock->holder,
-                donated_priority);
-   
+                (!t->blocking_lock) ? NULL : t->blocking_lock->holder,
+                donated_priority); 
 }
 
 /* Returns the current thread's priority. */

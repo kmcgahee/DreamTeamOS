@@ -203,8 +203,7 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  /* Try to get mutex. If we fail then some other thread has
-     what we need. */
+  /* Try to get mutex. If we fail then some other thread has what we need. */
   if (!try_sema_down (lock->semaphore))
   {
     /* Propogate current thread's priority to lower priority threads */
@@ -219,9 +218,10 @@ lock_acquire (struct lock *lock)
   
   /* Record that we now own lock so can later find what priority to 
      set to when releasing lock */
-  list_push_back (&thread_current ()->owned_locks, &lock->elem);
-  
   lock->holder = thread_current ();
+  list_push_back (lock->holder->owned_locks, &lock->elem);
+  
+  lock->holder->blocking_lock = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -240,7 +240,12 @@ lock_try_acquire (struct lock *lock)
 
   success = sema_try_down (&lock->semaphore);
   if (success)
+  {
     lock->holder = thread_current ();
+    list_push_back (lock->holder->owned_locks, &lock->elem);
+    lock->holder->blocking_lock = NULL;
+  }
+  
   return success;
 }
 
@@ -270,20 +275,13 @@ lock_release (struct lock *lock)
                              struct thread,
                              elem);
                          
-    // KLM: I think we should implement max/min functions.  Just not 
-    //      sure where is best.
     max_priority = max (max_priority, max_waiting_thread->priority);
   }
   
-  lock->holder->priority = max (max_priority, original_priority);
-  
-  // KLM: TODO:
-  // Need to know who is about to run from sema_up() call so we 
-  // set 'blocking_lock' pointer to NULL for that thread. 
-  // Maybe split off function to return thread?
+  lock->holder->priority = max (max_priority, lock->holder->original_priority);
   
   /* Remove lock from list of owned locks for previous owner */
-  list_remove (
+  list_remove (list_entry (lock->holder->owned_locks, struct lock, elem));
   
   lock->holder = NULL;
   
