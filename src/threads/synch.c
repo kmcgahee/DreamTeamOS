@@ -28,6 +28,7 @@
 
 #include "threads/synch.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -110,7 +111,6 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
-  struct list_elem *e = NULL;
   struct thread *t_next = NULL;
 
   ASSERT (sema != NULL);
@@ -204,22 +204,22 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   /* Try to get mutex. If we fail then some other thread has what we need. */
-  if (!try_sema_down (lock->semaphore))
+  if (!sema_try_down (&lock->semaphore))
   {
     /* Propogate current thread's priority to lower priority threads */
     thread_donate_priority (lock->holder, thread_get_priority ());
      
-    /* Record that owner of lock is blocking us so later we can
+    /* Record that this is the lock that is blocking us so later we can
        propogate priorities */
-    thread_current ()->blocking_lock = lock->holder;
+    thread_current ()->blocking_lock = lock;
        
-    sema_down (lock->semaphore);
+    sema_down (&lock->semaphore);
   }
   
   /* Record that we now own lock so can later find what priority to 
      set to when releasing lock */
   lock->holder = thread_current ();
-  list_push_back (lock->holder->owned_locks, &lock->elem);
+  list_push_back (&lock->holder->owned_locks, &lock->elem);
   
   lock->holder->blocking_lock = NULL;
 }
@@ -242,7 +242,7 @@ lock_try_acquire (struct lock *lock)
   if (success)
   {
     lock->holder = thread_current ();
-    list_push_back (lock->holder->owned_locks, &lock->elem);
+    list_push_back (&lock->holder->owned_locks, &lock->elem);
     lock->holder->blocking_lock = NULL;
   }
   
@@ -257,6 +257,8 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  struct list_elem * e = NULL;
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   
@@ -271,17 +273,17 @@ lock_release (struct lock *lock)
     
     /* Since waiters are sorted front will always have high priority */
     struct thread const * max_waiting_thread = list_entry (
-                             list_front ((owned_lock->semaphore).waiters),
+                             list_front (&((owned_lock->semaphore).waiters)),
                              struct thread,
                              elem);
                          
     max_priority = max (max_priority, max_waiting_thread->priority);
   }
   
-  lock->holder->priority = max (max_priority, lock->holder->original_priority);
+  lock->holder->priority = max (max_priority, lock->holder->org_priority);
   
   /* Remove lock from list of owned locks for previous owner */
-  list_remove (list_entry (lock->holder->owned_locks, struct lock, elem));
+  list_remove (list_entry (&lock->elem, struct lock, elem));
   
   lock->holder = NULL;
   

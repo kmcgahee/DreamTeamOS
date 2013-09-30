@@ -456,12 +456,12 @@ thread_set_priority (int new_priority)
 /* Recursively donates specific priority through blocked threads until
    reaches an un-blocked thread or a greater than or equal to priority */
 void
-thread_donate_priority (struct thread_t * t, int donated_priority) 
+thread_donate_priority (struct thread * t, int donated_priority) 
 {
   if (t == NULL || (t->priority >= donated_priority))
       return;
   
-  ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
+  ASSERT (PRI_MIN <= donated_priority && donated_priority <= PRI_MAX);
   
   t->priority = donated_priority;
   
@@ -594,8 +594,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->org_priority = priority;
-  init_list(&t->owned_locks);
-  t->blocking_thread = NULL;
+  list_init(&t->owned_locks);
+  t->blocking_lock = NULL;
   sema_init (&t->sleep_info.sema, 0);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
