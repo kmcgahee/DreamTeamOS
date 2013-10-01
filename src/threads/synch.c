@@ -109,7 +109,6 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
-  struct list_elem *e = NULL;
   struct thread *t_next = NULL;
 
   ASSERT (sema != NULL);
@@ -314,8 +313,8 @@ cond_wait (struct condition *cond, struct lock *lock)
        e != list_end(&cond->waiters);
        e = list_next(e) )
   {
-    list = &list_entry( e, struct semaphore_elem, elem )->semaphore.waiters;
-    e_t = list_front( list );
+    list_sem = &list_entry( e, struct semaphore_elem, elem )->semaphore.waiters;
+    e_t = list_front( list_sem );
     t_ele = list_entry( e_t, struct thread, elem );
     if( t_ele->priority < t->priority )
     {
