@@ -75,8 +75,11 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/* Comparison function used for list_insert_ordered.
+
+   It returns TRUE if a's priority > b's priority       */
 bool
-priority_more (const struct list_elem *a_, const struct list_elem *b_,
+thread_priority_more (const struct list_elem *a_, const struct list_elem *b_,
             void *aux UNUSED) 
 {
   const struct thread *a = list_entry (a_, struct thread, elem);
@@ -271,22 +274,20 @@ void
 thread_unblock (struct thread *t) 
 {
   enum intr_level old_level;
-
+  struct thread *cur = thread_current();
+  
   ASSERT (is_thread (t));
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  //list_push_back (&ready_list, &t->elem);
-  list_insert_ordered( &ready_list, &t->elem, priority_more, NULL ); // todo: consider using aux
+  list_insert_ordered( &ready_list, &t->elem, thread_priority_more, NULL );
   t->status = THREAD_READY;
 
   struct thread *y = list_entry( list_begin( &ready_list ), struct thread, elem );
-  if( thread_current() != idle_thread && y->priority > thread_current()->priority )
+  if( cur != idle_thread && y->priority > cur->priority )
   {
-    //printf( "Yield %s %d to %s %d \n\r", thread_current()->name, thread_current()->priority, y->name, y->priority ); 
-    //list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered( &ready_list, &thread_current()->elem, priority_more, NULL ); // todo: consider using aux
-    thread_current()->status = THREAD_READY;
+    list_insert_ordered( &ready_list, &cur->elem, thread_priority_more, NULL );
+    cur->status = THREAD_READY;
     schedule ();
   }
 
@@ -383,8 +384,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    //list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered( &ready_list, &cur->elem, priority_more, NULL ); // todo: consider using aux
+    list_insert_ordered( &ready_list, &cur->elem, thread_priority_more, NULL ); // todo: consider using aux
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
