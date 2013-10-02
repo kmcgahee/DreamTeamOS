@@ -411,46 +411,18 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current()->priority = new_priority;
+  /* If the thread is an elevated priority state then don't allow
+     the effective priority to be lowered immediately.  Once thread
+     is done being in an 'elevated' state then the lower set priority
+     will take effect since it will be the 'original' priority. */
+  if ((new_priority > thread_current()->priority) ||
+      (thread_current()->priority == thread_current()->org_priority))
+  {
+  	thread_current()->priority = new_priority;
+  }
+
   thread_current()->org_priority = new_priority;
   thread_yield();
-/*
-  struct thread *cur;
-  int old_pri;
-  cur = thread_current();
-  old_pri = cur->priority;
-  
-  struct list_elem *insert = NULL;
-  struct list_elem *stuff;
-  struct list_elem *elem;
-
-  if( new_priority == old_pri )
-    return;
-
-  if( new_priority > cur->priority )
-  {
-    // move it on up (front)
-    elem = cur->elem.prev;
-    while( elem.prev != NULL && cur->priority > list_entry( elem.prev, thread, elem )->priority )
-    {
-      insert = elem;
-      elem = elem.prev;
-    }
-
-    // delete
-    cur->elem->prev.next = cur->elem.next;
-    cur->elem->next.prev = cur->elem.prev;
-
-    //insert
-    stuff = elem.next;
-    elem.next = 
-  }
-  else
-  {
-    // move it on down (back)
-    
-  }
-*/
 }
 
 /* Recursively donates specific priority through blocked threads until

@@ -197,9 +197,13 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
+
+  old_level = intr_disable ();
 
   /* Try to get mutex. If we fail then some other thread has what we need. */
   if (!sema_try_down (&lock->semaphore))
@@ -219,7 +223,10 @@ lock_acquire (struct lock *lock)
   lock->holder = thread_current ();
   list_push_back (&lock->holder->owned_locks, &lock->elem);
   
-  lock->holder->blocking_lock = NULL;
+  /* If we got scheduled to run then nothing should be blocking us */
+  lock->holder->blocking_lock = NULL; 
+
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -231,11 +238,13 @@ lock_acquire (struct lock *lock)
 bool
 lock_try_acquire (struct lock *lock)
 {
+  enum intr_level old_level;
   bool success;
 
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
 
+  old_level = intr_disable ();
   success = sema_try_down (&lock->semaphore);
   if (success)
   {
@@ -243,6 +252,8 @@ lock_try_acquire (struct lock *lock)
     list_push_back (&lock->holder->owned_locks, &lock->elem);
     lock->holder->blocking_lock = NULL;
   }
+
+  intr_set_level (old_level);
   
   return success;
 }
@@ -256,9 +267,15 @@ void
 lock_release (struct lock *lock) 
 {
   struct list_elem * e = NULL;
+  enum intr_level old_level;
 
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  old_level = intr_disable ();
+
+  /* Remove lock from list of owned locks for previous owner */
+  list_remove (&lock->elem);  
   
   /* Need to figure out what to set effective priority
      to before releasing lock. */
@@ -267,25 +284,27 @@ lock_release (struct lock *lock)
        e != list_end (&lock->holder->owned_locks);
        e = list_next (e))
   {
-    struct lock const * owned_lock = list_entry (e, struct lock, elem);
+    struct lock * owned_lock = list_entry (e, struct lock, elem);
     
-    /* Since waiters are sorted front will always have high priority */
-    struct thread const * max_waiting_thread = list_entry (
+    if (!list_empty (&((owned_lock->semaphore).waiters)))
+    {
+    	/* Since waiters are sorted front will always have high priority */
+    	struct thread * max_waiting_thread = list_entry (
                              list_front (&((owned_lock->semaphore).waiters)),
                              struct thread,
                              elem);
                          
-    max_priority = max (max_priority, max_waiting_thread->priority);
+    	max_priority = max (max_priority, max_waiting_thread->priority);
+    }
   }
   
   lock->holder->priority = max (max_priority, lock->holder->org_priority);
   
-  /* Remove lock from list of owned locks for previous owner */
-  list_remove (list_entry (&lock->elem, struct lock, elem));
-  
   lock->holder = NULL;
-  
+
   sema_up (&lock->semaphore);
+
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
