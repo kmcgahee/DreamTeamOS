@@ -36,8 +36,7 @@ struct sleep_context
     struct list_elem elem;   /* List element for context of sleeping threads. */
 };
 
-PURPOSE: Allow threads to track information on a 'per-thread' basis to eliminate
-         multiple sleep race conditions.
+PURPOSE: Allow threads to track information on a 'per-thread' basis to eliminate multiple sleep race conditions.
 struct thread
 {
     ...
@@ -122,19 +121,73 @@ The design was chosen because it accomplished two goals...
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+PURPOSE: Save original priority and keep references to locks of interest when doing priority donation.
+struct thread
+{
+    ...
+    ...
+    int org_priority;                   /* Original priority level. */
+    ...
+    struct list owned_locks;            /* List of locks owned by this thread. */
+    struct lock * blocking_lock;        /* Lock that is blocking this thread. */
+    ...
+};
+
+PURPOSE: Corresponding list element to allowed locks to be stored in 'owned' locks list mentioned above.
+struct lock 
+  {
+    ...
+    struct list_elem elem;      /* List element for tracking owned locks */
+  };
+
 >> B2: Explain the data structure used to track priority donation.
 
+The already existing 'thread' data structure was used to track priority donation.
+An extra priority level is now stored in this data structure to 'remember' the steady state prioirity
+of the thread.
+
+In addition the 'thread' structure now contains a list structure containing elements of the 'lock' data type
+as well as a reference to what lock is currently blocking that thread (or NULL if the thread isn't blocked).
+By allowing threads to know about which threads they currently own they can make correct decisions when releasing a lock.
+By knowing the currently blocking thread the OS can propogate priorities in nested lock situations.
 
 ---- ALGORITHMS ----
 
 >> B3: How do you ensure that the highest priority thread waiting for
 >> a lock, semaphore, or condition variable wakes up first?
 
+The list of threads containing blocked or waiting threads are always kept descendingly sorted by effective priority level.
+This invariant allows the scheduler/primitive to grab the first thread in the list.  This also has the desirable effect
+that when multiple threads have the same priority they can be scheduled in a cyclic order.  
+
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 
+First the calling thread tries to grab the lock by calling sema_try_down().
+Assuming another thread already owns the lock it will then call thread_donate_priority() 
+in order to recursively propogate its priority down to the lock owner and if that thread is 
+blocked then propogate the priority to the owner of that lock. This propogation will continue
+until either a thread isn't blocked by a lock or a thread has a greater than or equal to priority
+compared to the priority being donated.
+
+Once the priority of the calling thread has been correctly donated to other threads the sema_down()
+function is called for the locks semaphore which will always block the calling thread and add it to
+the lock's waitlist.
+
+Finally the calling thread stores the lock in it's 'currently owned' list and sets the lock's owner reference to itself.
+
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
+
+First the lock will be removed from the 'owned locks list' associated with the owner of the lock since the lock
+is about to have a new owner.
+
+Then the lock's current owner will iterate through all of its 'owned locks' and find the maximum priority thread
+that still is waiting on the owner thread.  The lock's current owner will then either restore its effective priority
+to its original priority or the max priority found in the iteration above if it greater than the original priority.
+
+Finally the locks owner will be cleared and sema_up() will be called on the lock's semaphore to schedule the next
+highest priority thread if one is waiting. 
 
 ---- SYNCHRONIZATION ----
 
@@ -142,11 +195,22 @@ The design was chosen because it accomplished two goals...
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
+TODO
+
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
 
+One reason this design was chosen because it allowed the already existing 'priority' field of the
+thread structure to be the effective priority of the thread. We had considered storing relative donations
+but then code already using the 'priority' field would have to be updated to use some 'thread_effective_priority()'
+function or macro that computed the effective priority.
+
+We had also considered storing references to the thread of the lock that was blocking another thread, but instead we 
+chose to keep a reference to the blocking lock.  This is superior because the lock already contains a reference to the
+owner thread and also encapsulates other threads waiting on the lock through the use of a semaphore.  This extra information
+allows our design to correctly set the effective priority of a thread when it releases a lock as mentioned in section B5 above.  
 
               ADVANCED SCHEDULER [EXTRA CREDIT]
               =================================
