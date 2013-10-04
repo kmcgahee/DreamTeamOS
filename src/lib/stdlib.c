@@ -4,8 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-/* Returns maximum between two integers.  If same then returns
-   first passed in integer. */
+/* Returns maximum value of two integers */
 int
 max (int one, int two) 
 {
