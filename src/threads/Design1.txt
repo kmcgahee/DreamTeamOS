@@ -195,7 +195,11 @@ highest priority thread if one is waiting.
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
-TODO
+The potential race condition exists if thread_set_priority is interrupted between setting the current thread's 
+priority to the new priority and resetting the org_priority to the new priority. To avoid this race condition 
+interrupts are disabled before resetting any priority values and restored before calling thread_yield. In this 
+case a lock could not be utilized because we are not concerned about another thread using the resource. Our only 
+concern is the interruption of this procedure.  
 
 ---- RATIONALE ----
 

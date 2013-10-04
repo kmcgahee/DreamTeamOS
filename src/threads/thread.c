@@ -411,6 +411,11 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+	
+  enum intr_level old_level;
+
+  old_level = intr_disable ();
+
   /* If the thread is an elevated priority state then don't allow
      the effective priority to be lowered immediately.  Once thread
      is done being in an 'elevated' state then the lower set priority
@@ -422,6 +427,9 @@ thread_set_priority (int new_priority)
   }
 
   thread_current()->org_priority = new_priority;
+
+  intr_set_level (old_level);
+
   thread_yield();
 }
 
