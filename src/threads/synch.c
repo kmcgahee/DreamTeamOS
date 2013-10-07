@@ -28,6 +28,7 @@
 
 #include "threads/synch.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -196,12 +197,36 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
+  old_level = intr_disable ();
+
+  /* Try to get mutex. If we fail then some other thread has what we need. */
+  if (!sema_try_down (&lock->semaphore))
+  {
+    /* Propogate current thread's priority to lower priority threads */
+    thread_donate_priority (lock->holder, thread_get_priority ());
+     
+    /* Record that this is the lock that is blocking us so later we can
+       propogate priorities */
+    thread_current ()->blocking_lock = lock;
+       
+    sema_down (&lock->semaphore);
+  }
+  
+  /* Record that we now own lock so can later find what priority to 
+     set to when releasing lock */
   lock->holder = thread_current ();
+  list_push_back (&lock->holder->owned_locks, &lock->elem);
+  
+  /* If we got scheduled to run then nothing should be blocking us */
+  lock->holder->blocking_lock = NULL; 
+
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -213,14 +238,23 @@ lock_acquire (struct lock *lock)
 bool
 lock_try_acquire (struct lock *lock)
 {
+  enum intr_level old_level;
   bool success;
 
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
 
+  old_level = intr_disable ();
   success = sema_try_down (&lock->semaphore);
   if (success)
+  {
     lock->holder = thread_current ();
+    list_push_back (&lock->holder->owned_locks, &lock->elem);
+    lock->holder->blocking_lock = NULL;
+  }
+
+  intr_set_level (old_level);
+  
   return success;
 }
 
@@ -232,11 +266,45 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  struct list_elem * e = NULL;
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  old_level = intr_disable ();
+
+  /* Remove lock from list of owned locks for previous owner */
+  list_remove (&lock->elem);  
+  
+  /* Need to figure out what to set effective priority
+     to before releasing lock. */
+  int max_priority = PRI_MIN;
+  for (e = list_begin (&lock->holder->owned_locks);
+       e != list_end (&lock->holder->owned_locks);
+       e = list_next (e))
+  {
+    struct lock * owned_lock = list_entry (e, struct lock, elem);
+    
+    if (!list_empty (&((owned_lock->semaphore).waiters)))
+    {
+    	/* Since waiters are sorted front will always have high priority */
+    	struct thread * max_waiting_thread = list_entry (
+                             list_front (&((owned_lock->semaphore).waiters)),
+                             struct thread,
+                             elem);
+                         
+    	max_priority = max (max_priority, max_waiting_thread->priority);
+    }
+  }
+  
+  lock->holder->priority = max (max_priority, lock->holder->org_priority);
+  
   lock->holder = NULL;
+
   sema_up (&lock->semaphore);
+
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
