@@ -384,7 +384,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered( &ready_list, &cur->elem, thread_priority_more, NULL ); // todo: consider using aux
+    list_insert_ordered( &ready_list, &cur->elem, thread_priority_more, NULL );
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -434,17 +434,35 @@ thread_set_priority (int new_priority)
 }
 
 /* Recursively donates specific priority through blocked threads until
-   reaches an un-blocked thread or a greater than or equal to priority */
+   reaches an un-blocked thread or a greater than or equal to priority.
+
+   Can only be called with interrupts disabled */
 void
 thread_donate_priority (struct thread * t, int donated_priority) 
 {
+  struct list_elem *e;
+
   if (t == NULL || (t->priority >= donated_priority))
       return;
   
   ASSERT (PRI_MIN <= donated_priority && donated_priority <= PRI_MAX);
-  
+  ASSERT (!intr_context ());
+
   t->priority = donated_priority;
-  
+
+  /* sort thread if not current */
+  if( t != thread_current() )
+  {
+    e = t->elem.prev;
+    while( e->prev != NULL && t->priority > list_entry( e, struct thread, elem )->priority )
+    {
+      e = e->prev;
+    }
+
+    list_remove( &t->elem );
+    list_insert( e->next, &t->elem );
+  }
+
   /* If thread is blocked by another lock then propagate priority */
   thread_donate_priority (
                 (!t->blocking_lock) ? NULL : t->blocking_lock->holder,
