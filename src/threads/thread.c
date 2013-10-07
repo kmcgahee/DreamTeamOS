@@ -384,7 +384,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered( &ready_list, &cur->elem, thread_priority_more, NULL ); // todo: consider using aux
+    list_insert_ordered( &ready_list, &cur->elem, thread_priority_more, NULL );
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -411,45 +411,62 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current()->priority = new_priority;
-  thread_yield();
-/*
-  struct thread *cur;
-  int old_pri;
-  cur = thread_current();
-  old_pri = cur->priority;
-  
-  struct list_elem *insert = NULL;
-  struct list_elem *stuff;
-  struct list_elem *elem;
+	
+  enum intr_level old_level;
 
-  if( new_priority == old_pri )
-    return;
+  old_level = intr_disable ();
 
-  if( new_priority > cur->priority )
+  /* If the thread is an elevated priority state then don't allow
+     the effective priority to be lowered immediately.  Once thread
+     is done being in an 'elevated' state then the lower set priority
+     will take effect since it will be the 'original' priority. */
+  if ((new_priority > thread_current()->priority) ||
+      (thread_current()->priority == thread_current()->org_priority))
   {
-    // move it on up (front)
-    elem = cur->elem.prev;
-    while( elem.prev != NULL && cur->priority > list_entry( elem.prev, thread, elem )->priority )
+  	thread_current()->priority = new_priority;
+  }
+
+  thread_current()->org_priority = new_priority;
+
+  intr_set_level (old_level);
+
+  thread_yield();
+}
+
+/* Recursively donates specific priority through blocked threads until
+   reaches an un-blocked thread or a greater than or equal to priority.
+
+   Can only be called with interrupts disabled */
+void
+thread_donate_priority (struct thread * t, int donated_priority) 
+{
+  struct list_elem *e;
+
+  if (t == NULL || (t->priority >= donated_priority))
+      return;
+  
+  ASSERT (PRI_MIN <= donated_priority && donated_priority <= PRI_MAX);
+  ASSERT (!intr_context ());
+
+  t->priority = donated_priority;
+
+  /* sort thread if not current */
+  if( t != thread_current() )
+  {
+    e = t->elem.prev;
+    while( e->prev != NULL && t->priority > list_entry( e, struct thread, elem )->priority )
     {
-      insert = elem;
-      elem = elem.prev;
+      e = e->prev;
     }
 
-    // delete
-    cur->elem->prev.next = cur->elem.next;
-    cur->elem->next.prev = cur->elem.prev;
+    list_remove( &t->elem );
+    list_insert( e->next, &t->elem );
+  }
 
-    //insert
-    stuff = elem.next;
-    elem.next = 
-  }
-  else
-  {
-    // move it on down (back)
-    
-  }
-*/
+  /* If thread is blocked by another lock then propagate priority */
+  thread_donate_priority (
+                (!t->blocking_lock) ? NULL : t->blocking_lock->holder,
+                donated_priority); 
 }
 
 /* Returns the current thread's priority. */
@@ -574,6 +591,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->org_priority = priority;
+  list_init(&t->owned_locks);
+  t->blocking_lock = NULL;
   sema_init (&t->sleep_info.sema, 0);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);

@@ -98,9 +98,13 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct sleep_context sleep_info;    /* Sleeping context information */
+    int priority;                       /* Effective priority level. */
+    int org_priority;                   /* Original priority level. */
+    struct sleep_context sleep_info;    /* Sleeping context information. */
     struct list_elem allelem;           /* List element for all threads list. */
+    
+    struct list owned_locks;            /* List of locks owned by this thread. */
+    struct lock * blocking_lock;        /* Lock that is blocking this thread. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -143,6 +147,8 @@ void thread_yield (void);
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+
+void thread_donate_priority (struct thread * t, int donated_priority);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
