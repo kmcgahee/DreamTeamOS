@@ -11,6 +11,13 @@ max (int one, int two)
   return (one >= two ? one : two);
 }
 
+/* Returns minimum value of two integers */
+int
+min (int one, int two) 
+{
+  return (one <= two ? one : two);
+}
+
 /* Converts a string representation of a signed decimal integer
    in S into an `int', which is returned. */
 int
