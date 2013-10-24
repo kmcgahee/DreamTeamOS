@@ -276,7 +276,10 @@ sys_halt (void)
 static void
 sys_exit (int status)
 {
-  printf( "sys_exit() not implemented.\n" );
+  struct thread *cur = thread_current ();
+  
+  /* Set exit status in thread struct*/
+  cur->exit_status = status;
   thread_exit();
 }
 
