@@ -2,10 +2,20 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include <user/syscall.h>
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+
+/* File metadata that allows threads to track different files on the filesystem. */
+struct file_descriptor
+{
+    int handle;            /* Handle # of file (also referred to as a file descripter) */
+    struct file * file;    /* File system information */
+    struct list_elem elem; /* List element for list in 'struct thread' */
+};
 
 static struct lock fs_lock;
 
@@ -27,6 +37,11 @@ static void sys_close (int);
 
 static void copy_in (void *, const void *, size_t);
 static char * copy_in_string (const char *us);
+
+static struct file_descripter * get_file_descripter (int handle);
+
+static inline void lock_file_system (void);
+static inline void unlock_file_system (void);
 
 void
 syscall_init (void) 
@@ -83,8 +98,7 @@ syscall_handler (struct intr_frame *f)
   memset (args, 0, sizeof args);
   copy_in (args, (uint32_t *) f->esp + 1, sizeof *args * sc->arg_cnt);
   
-  /* Execute the system call,
-     and set the return value. */
+  /* Execute the system call and set the return value. */
   f->eax = sc->func (args[0], args[1], args[2]);
 }
 
@@ -101,7 +115,7 @@ sys_open (const char *ufile)
   fd = malloc (sizeof *fd);
   if (fd != NULL)
   {
-    lock_acquire (&fs_lock);
+    lock_file_system();
     fd->file = filesys_open (kfile);
     if (fd->file != NULL)
     {
@@ -113,7 +127,7 @@ sys_open (const char *ufile)
     {
       free (fd);
     }
-    lock_release (&fs_lock);
+    unlock_file_system();
   }
   
   palloc_free_page (kfile);
@@ -123,41 +137,6 @@ sys_open (const char *ufile)
 
 printf( "sys_open() not implemented.\n" );
 thread_exit();
-}
-
-/* Writes size bytes from buffer to the open file descripter (fd).
- 
- Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
- Writing past end-of-file would normally extend the file, but file growth is not implemented by the basic file 
- system. Fd 1 writes to the console. When writing large buffers to the console they output in smaller chunks
- in order to not interleave output between multiple processes. */
-static int
-sys_write (int fd, const char *buffer, unsigned int size) 
-{
-  static const unsigned int max_out_buffer_size = 128;
-  unsigned int current_size = 0;
-  int bytes_written = 0;
-  
-  // TODO: Handle buffer being NULL
-  // TODO: Handle bad file descripters
-
-  // TODO: Use Filesystem Lock (fs_lock)
-  if (fd == 1) /* Write to console */
-  {
-    bytes_written = size; /* Always write out all bytes */
-    while (size > 0)
-    {  
-      current_size = min(size, max_out_buffer_size);  
-      putbuf(buffer, size);
-      size -= current_size;
-    }
-  }
-  else
-  {
-    // TODO: Write out to file.
-  }
-  
-  return bytes_written;
 }
 
 /* Reads a byte at user virtual address UADDR.
@@ -306,34 +285,187 @@ static bool sys_remove (const char *file)
   thread_exit();
 }
 
-static int sys_filesize (int fd)
+/* Returns the size, in bytes, of the file open under HANDLE.
+   If the handle doesn't exist or an occurs -1 is returned */ 
+static int 
+sys_filesize (int handle)
 {
-  printf( "sys_filesize() not implemented.\n" );
-  thread_exit();
+  int length_of_file = 0;
+  struct file_descripter *fd = get_file_descripter (handle);
+  
+  if (!fd)
+      return -1;
+  
+  lock_file_system();
+  length_of_file = file_length (fd->file);
+  unlock_file_system();
+  
+  return length_of_file;
 }
 
-static int sys_read (int fd, void *buffer, unsigned size)
+/* Reads size bytes from the file open as HANDLE into buffer. Returns the number of bytes actually read 
+  (0 at end of file), or -1 if the file could not be read. (due to a condition other than end of file).
+   The current file position will be advanced by this read. */
+static int
+sys_read (int handle, void *buffer, unsigned size)
 {
-  printf( "sys_read() not implemented.\n" );
-  thread_exit();
+  int bytes_read = 0;
+  struct file_descripter *fd = NULL;
+
+  if (!buffer)
+      return -1;
+  
+  if (handle == 0) /* Read in from keyboard */
+  {
+      for (bytes_read = 0; bytes_read < size; ++bytes_read)
+      {
+          buffer[bytes_read] = input_getc();
+      }
+  }
+  else
+  {
+      fd = get_file_descripter (handle);
+      
+      if (!fd)
+          return -1; /* Error finding file descripter */
+      
+      lock_file_system();
+      bytes_read = file_read (fd->file, buffer, size);
+      unlock_file_system();
+  }
+    
+  return bytes_read;
 }
 
-static void sys_seek (int fd, unsigned position)
+/* Writes size bytes from buffer to the open file descripter (HANDLE) and advances file position.
+ 
+ Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
+ Writing past end-of-file would normally extend the file, but file growth is not implemented by the basic file 
+ system. Handle of 1 writes to the console. When writing large buffers to the console they output in smaller chunks
+ in order to not interleave output between multiple processes. */
+static int
+sys_write (int handle, const char *buffer, unsigned int size) 
 {
-  printf( "sys_seek() not implemented.\n" );
-  thread_exit();
+  static const unsigned int max_out_buffer_size = 128;
+  struct file_descripter *fd = NULL;
+  unsigned int current_size = 0;
+  unsigned int size_left = size;
+  int bytes_written = 0;
+  
+  if (!buffer)
+    return -1;
+
+  if (handle == 1) /* Write to console */
+  {
+    while (size_left > 0)
+    {  
+      current_size = min(size_left, max_out_buffer_size);  
+      putbuf (buffer + bytes_written, current_size);
+      bytes_written += current_size;
+      size_left -= current_size;
+    }
+  }
+  else
+  {
+    fd = get_file_descripter (handle);
+    
+    if (!fd)
+      return -1; /* Error finding file descripter */
+    
+    lock_file_system();
+    bytes_written = file_write (fd->file, buffer, size);
+    unlock_file_system();
+  }
+  
+  return bytes_written;
 }
 
-static unsigned sys_tell (int fd)
+/* Changes the next byte to be read or written in open file HANLDE to position,
+  expressed in bytes from the beginning of the file.
+  A seek past the current end of a file is not an error.
+  A later read obtains 0 bytes, indicating end of file.
+  A later write currently will cause an error due to fixed file sizes. */
+static void
+sys_seek (int handle, unsigned position)
 {
-  printf( "sys_tell() not implemented.\n" );
-  thread_exit();
+  struct file_descripter *fd = get_file_descripter (handle);
+    
+  if (!fd)
+    return; /* Error finding file descripter */
+  
+  lock_file_system();
+  file_seek (fd->file, position);
+  unlock_file_system();
 }
 
-static void sys_close (int fd)
+/* Returns the position of the next byte to be read or written in open file HANDLE,
+   expressed in bytes from the beginning of the file. */
+static unsigned
+sys_tell (int handle)
 {
-  printf( "sys_close() not implemented.\n" );
-  thread_exit();
+  struct file_descripter *fd = get_file_descripter (handle);
+  unsigned int pos = 0;
+  
+  if (!fd)
+    return 0; /* Error finding file descripter */
+    
+  lock_file_system();
+  pos = file_tell (fd->file)
+  unlock_file_system();
+    
+  return pos;
 }
 
+/* Closes file descriptor HANDLE. Exiting or terminating a process implicitly closes
+   all its open file descriptors, as if by calling this function for each one. */
+static void
+sys_close (int handle)
+{
+  struct file_descripter *fd = get_file_descripter (handle);
+    
+  if (!fd)
+    return; /* Error finding file descripter */
+  
+  lock_file_system();
+  file_close (fd->file);
+  unlock_file_system();
+}
 
+/* Returns the file descripter information for current thread corresponding to HANDLE.  
+   If the HANDLE doesn't correspond to any known file descripter or if an error occurs
+   then null is returned. */
+static struct file_descripter *
+get_file_descripter (int handle)
+{
+    struct file_descripter *fd = NULL;
+    struct thread *cur = thread_current();
+    struct list_elem *e = NULL;
+
+    /* Try to find matching handle in current threads list. */
+    for (e = list_begin (&cur->fds);
+         e != list_end (&cur->fds);
+         e = list_next (e))
+    {
+        fd = list_entry (e, struct file_descripter, elem);
+        
+        if (fd->handle == handle)
+            return fd;
+    }
+    
+    return NULL; /* Couldn't find matching handle */
+}
+
+/* Locks the file system to be owned by current thread.
+   Will block if lock is already owned by another thread. */
+static inline void
+lock_file_system (void)
+{
+    lock_aquire (&fs_lock);
+}
+
+/* Unlock file system so other threads can use it. */
+static inline void
+unlock_file_system (void)
+{
+    lock_release (&fs_lock);
+}

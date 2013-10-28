@@ -113,6 +113,10 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     int exit_status;                    /* Process exit status */
+    
+    /* Owned by userprog/syscall.c. */
+    struct list fds;                    /* List of file descripters */
+    int next_handle;                    /* Next handle # to assign file to. */
 #endif
 
     /* Owned by thread.c. */

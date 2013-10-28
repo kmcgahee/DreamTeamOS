@@ -595,6 +595,8 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->owned_locks);
   t->blocking_lock = NULL;
   sema_init (&t->sleep_info.sema, 0);
+  list_init(&t->fds);
+  t->next_handle = 3;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
