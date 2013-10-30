@@ -11,6 +11,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "filesys/filesys.h"
 
 /* File metadata that allows threads to track different files on the filesystem. */
 struct file_descriptor
@@ -105,12 +106,10 @@ syscall_handler (struct intr_frame *f)
   f->eax = sc->func (args[0], args[1], args[2]);
 }
 
-// TODO: comment, check, & complete code
+
 static int
 sys_open (const char *ufile)
 {
-/* COMMENT OUT */
-#if 0
   char *kfile = copy_in_string (ufile);
   struct file_descriptor *fd;
   int handle = -1;
@@ -135,11 +134,6 @@ sys_open (const char *ufile)
   
   palloc_free_page (kfile);
   return handle;
-#endif
-/* END COMMENT */
-
-printf( "sys_open() not implemented.\n" );
-thread_exit();
 }
 
 /* Reads a byte at user virtual address UADDR.
@@ -277,13 +271,37 @@ static int sys_wait (pid_t pid)
 }
 static bool sys_create (const char *file, unsigned initial_size)
 {
-  printf( "sys_create() not implemented.\n" );
-  thread_exit();
+    /* Copy filename string from user to kernel memory */
+    char *kernel_file = copy_in_string (file);
+    bool create_success;
+    
+    lock_file_system();
+    /* Create file with filename in kernel and initial size */
+    create_success = filesys_create ( kernel_file, initial_size);
+    
+    unlock_file_system();
+    
+    /* Free filename in kernel */
+    palloc_free_page (kernel_file);
+    
+    return create_success; 
 }
 static bool sys_remove (const char *file)
 {
-  printf( "sys_remove() not implemented.\n" );
-  thread_exit();
+    /* Copy filename string from user to kernel memory */
+    char *kernel_file = copy_in_string (file);
+    bool remove_success; 
+    
+    lock_file_system();
+    /* Remove file with filename in kernel */
+    create_remove = filesys_remove (kernel_file);
+    
+    unlock_file_system();
+    
+    /* Free filename in kernel */
+    palloc_free_page (kernel_file);
+    
+    return remove_success;   
 }
 
 /* Returns the size, in bytes, of the file open under HANDLE.
