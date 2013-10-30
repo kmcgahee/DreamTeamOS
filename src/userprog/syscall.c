@@ -1,18 +1,21 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include <user/syscall.h>
+#include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
 /* File metadata that allows threads to track different files on the filesystem. */
 struct file_descriptor
 {
-    int handle;            /* Handle # of file (also referred to as a file descripter) */
+    int handle;            /* Handle # of file (also referred to as a file descriptor) */
     struct file * file;    /* File system information */
     struct list_elem elem; /* List element for list in 'struct thread' */
 };
@@ -38,7 +41,7 @@ static void sys_close (int);
 static void copy_in (void *, const void *, size_t);
 static char * copy_in_string (const char *us);
 
-static struct file_descripter * get_file_descripter (int handle);
+static struct file_descriptor * get_file_descriptor (int handle);
 
 static inline void lock_file_system (void);
 static inline void unlock_file_system (void);
@@ -171,10 +174,8 @@ static void
 copy_in (void * dest, const void * src, size_t size)
 {
   // TODO: optimize / improve structure
-  int i;
+  uint8_t i;
   int8_t temp;
-  const uint8_t * data = src;
-  uint8_t * data_dest = dest;
   for( i=0; i < size; i++ )
   {
     /* Verify source address is below PHYS_BASE */
@@ -291,7 +292,7 @@ static int
 sys_filesize (int handle)
 {
   int length_of_file = 0;
-  struct file_descripter *fd = get_file_descripter (handle);
+  struct file_descriptor *fd = get_file_descriptor (handle);
   
   if (!fd)
       return -1;
@@ -310,7 +311,7 @@ static int
 sys_read (int handle, void *buffer, unsigned size)
 {
   int bytes_read = 0;
-  struct file_descripter *fd = NULL;
+  struct file_descriptor *fd = NULL;
 
   if (!buffer)
       return -1;
@@ -319,15 +320,15 @@ sys_read (int handle, void *buffer, unsigned size)
   {
       for (bytes_read = 0; bytes_read < size; ++bytes_read)
       {
-          buffer[bytes_read] = input_getc();
+          ((char*)buffer)[bytes_read] = input_getc();
       }
   }
   else
   {
-      fd = get_file_descripter (handle);
+      fd = get_file_descriptor (handle);
       
       if (!fd)
-          return -1; /* Error finding file descripter */
+          return -1; /* Error finding file descriptor */
       
       lock_file_system();
       bytes_read = file_read (fd->file, buffer, size);
@@ -337,7 +338,7 @@ sys_read (int handle, void *buffer, unsigned size)
   return bytes_read;
 }
 
-/* Writes size bytes from buffer to the open file descripter (HANDLE) and advances file position.
+/* Writes size bytes from buffer to the open file descriptor (HANDLE) and advances file position.
  
  Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
  Writing past end-of-file would normally extend the file, but file growth is not implemented by the basic file 
@@ -347,7 +348,7 @@ static int
 sys_write (int handle, const char *buffer, unsigned int size) 
 {
   static const unsigned int max_out_buffer_size = 128;
-  struct file_descripter *fd = NULL;
+  struct file_descriptor *fd = NULL;
   unsigned int current_size = 0;
   unsigned int size_left = size;
   int bytes_written = 0;
@@ -367,10 +368,10 @@ sys_write (int handle, const char *buffer, unsigned int size)
   }
   else
   {
-    fd = get_file_descripter (handle);
+    fd = get_file_descriptor (handle);
     
     if (!fd)
-      return -1; /* Error finding file descripter */
+      return -1; /* Error finding file descriptor */
     
     lock_file_system();
     bytes_written = file_write (fd->file, buffer, size);
@@ -388,10 +389,10 @@ sys_write (int handle, const char *buffer, unsigned int size)
 static void
 sys_seek (int handle, unsigned position)
 {
-  struct file_descripter *fd = get_file_descripter (handle);
+  struct file_descriptor *fd = get_file_descriptor (handle);
     
   if (!fd)
-    return; /* Error finding file descripter */
+    return; /* Error finding file descriptor */
   
   lock_file_system();
   file_seek (fd->file, position);
@@ -403,14 +404,14 @@ sys_seek (int handle, unsigned position)
 static unsigned
 sys_tell (int handle)
 {
-  struct file_descripter *fd = get_file_descripter (handle);
+  struct file_descriptor *fd = get_file_descriptor (handle);
   unsigned int pos = 0;
   
   if (!fd)
-    return 0; /* Error finding file descripter */
+    return 0; /* Error finding file descriptor */
     
   lock_file_system();
-  pos = file_tell (fd->file)
+  pos = file_tell (fd->file);
   unlock_file_system();
     
   return pos;
@@ -421,23 +422,23 @@ sys_tell (int handle)
 static void
 sys_close (int handle)
 {
-  struct file_descripter *fd = get_file_descripter (handle);
+  struct file_descriptor *fd = get_file_descriptor (handle);
     
   if (!fd)
-    return; /* Error finding file descripter */
+    return; /* Error finding file descriptor */
   
   lock_file_system();
   file_close (fd->file);
   unlock_file_system();
 }
 
-/* Returns the file descripter information for current thread corresponding to HANDLE.  
-   If the HANDLE doesn't correspond to any known file descripter or if an error occurs
+/* Returns the file descriptor information for current thread corresponding to HANDLE.  
+   If the HANDLE doesn't correspond to any known file descriptor or if an error occurs
    then null is returned. */
-static struct file_descripter *
-get_file_descripter (int handle)
+static struct file_descriptor *
+get_file_descriptor (int handle)
 {
-    struct file_descripter *fd = NULL;
+    struct file_descriptor *fd = NULL;
     struct thread *cur = thread_current();
     struct list_elem *e = NULL;
 
@@ -446,7 +447,7 @@ get_file_descripter (int handle)
          e != list_end (&cur->fds);
          e = list_next (e))
     {
-        fd = list_entry (e, struct file_descripter, elem);
+        fd = list_entry (e, struct file_descriptor, elem);
         
         if (fd->handle == handle)
             return fd;
@@ -460,7 +461,7 @@ get_file_descripter (int handle)
 static inline void
 lock_file_system (void)
 {
-    lock_aquire (&fs_lock);
+    lock_acquire (&fs_lock);
 }
 
 /* Unlock file system so other threads can use it. */
