@@ -276,9 +276,7 @@ static bool sys_create (const char *file, unsigned initial_size)
     bool create_success;
     
     lock_file_system();
-    /* Create file with filename in kernel and initial size */
-    create_success = filesys_create ( kernel_file, initial_size);
-    
+    create_success = filesys_create (kernel_file, initial_size);
     unlock_file_system();
     
     /* Free filename in kernel */
@@ -293,9 +291,7 @@ static bool sys_remove (const char *file)
     bool remove_success; 
     
     lock_file_system();
-    /* Remove file with filename in kernel */
-    create_remove = filesys_remove (kernel_file);
-    
+    remove_success = filesys_remove (kernel_file);
     unlock_file_system();
     
     /* Free filename in kernel */
