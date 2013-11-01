@@ -169,7 +169,7 @@ copy_in (void * dest, const void * src, size_t size)
 {
   // TODO: optimize / improve structure
   uint8_t i;
-  int8_t temp;
+  int temp;
   for( i=0; i < size; i++ )
   {
     /* Verify source address is below PHYS_BASE */
@@ -205,6 +205,7 @@ static char * copy_in_string (const char *us)
 {
   char * ks;
   int i;
+  int temp;
 
   // TODO: add comments, possibly optimize.
   ks = palloc_get_page(0);
@@ -217,13 +218,15 @@ static char * copy_in_string (const char *us)
   {
     if( us < PHYS_BASE )
     {
-      ks[i] = get_user( us );
-      if( ks[i] < 0 )
+      temp = get_user( us );
+      if( temp < 0 )
       {
         palloc_free_page (ks);
         thread_exit();
       }
       
+      ks[i] = temp;
+
       if( ks[i] == '\0' )
       {
         return ks;
