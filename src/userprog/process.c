@@ -21,6 +21,13 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+struct load_info
+{
+  const char *file;
+  struct semaphore load_done;
+  bool success;
+};
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -28,42 +35,61 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  struct load_info _load;
   tid_t tid;
-
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  _load.file = palloc_get_page (0);
+  if (_load.file == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (_load.file, file_name, PGSIZE);
+  
+  sema_init ( &_load.load_done, 0 );
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, &_load);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
-  return tid;
+  {
+    palloc_free_page (_load.file); 
+  }
+  else
+  {
+    sema_down( &_load.load_done );
+    if( _load.success )
+    {
+      // TODO: Add to children list
+      //list_push_back (&thread_current ()->children, &_load.
+    }
+    else
+    {
+      tid = TID_ERROR;
+    }
+  }  
+return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *aux)
 {
-  char *file_name = file_name_;
   struct intr_frame if_;
-  bool success;
+  struct load_info * _load = (struct load_info *)aux;
+
+  if( _load == NULL )
+  {
+    thread_exit ();
+  }  
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  _load->success = load (_load->file, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  if (!_load->success) 
     thread_exit ();
 
   /* Start the user process by simulating a return from an
