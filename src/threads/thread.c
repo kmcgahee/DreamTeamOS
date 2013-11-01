@@ -596,8 +596,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->blocking_lock = NULL;
   sema_init (&t->sleep_info.sema, 0);
 #ifdef USERPROG
+  list_init(&t->children);
   list_init(&t->fds);
   t->next_handle = 3;
+  t->exit_status = NULL;
 #endif
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);

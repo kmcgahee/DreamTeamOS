@@ -256,22 +256,25 @@ sys_exit (int status)
   struct thread *cur = thread_current ();
   
   /* Set exit status in thread struct*/
-  cur->exit_status = status;
+  cur->exit_code = status;
   thread_exit();
 }
 
 static pid_t
 sys_exec (const char *file)
 {
-  printf( "sys_exec() not implemented.\n" );
-  thread_exit();
+  tid_t tid;
+  char *kf = copy_in_string( file );
+  tid = process_execute( kf );
+  palloc_free_page( kf );
+  return tid;
 }
 
 static int sys_wait (pid_t pid)
 {
-  printf( "sys_wait() not implemented.\n" );
-  thread_exit();
+  return process_wait ( pid );
 }
+
 static bool sys_create (const char *file, unsigned initial_size)
 {
     /* Copy filename string from user to kernel memory */

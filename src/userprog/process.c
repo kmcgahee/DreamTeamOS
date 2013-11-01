@@ -14,6 +14,7 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -26,6 +27,7 @@ struct load_info
   const char *file;
   struct semaphore load_done;
   bool success;
+  struct exit_info * exit_status;
 };
 
 /* Starts a new thread running a user program loaded from
@@ -57,8 +59,7 @@ process_execute (const char *file_name)
     sema_down( &_load.load_done );
     if( _load.success )
     {
-      // TODO: Add to children list
-      //list_push_back (&thread_current ()->children, &_load.
+      list_push_back (&thread_current ()->children, &_load.exit_status );
     }
     else
     {
@@ -68,6 +69,21 @@ process_execute (const char *file_name)
 return tid;
 }
 
+static void
+free_child( struct exit_info *exit_status )
+{
+  int num_refs;
+  lock_acquire(&exit_status->lock);
+  exit_status->refs--;
+  num_refs = exit_status->refs;
+  lock_release( &exit_status->lock);
+
+  if( num_refs == 0 )
+  {
+    free( exit_status );
+  }
+}
+
 /* A thread function that loads a user process and starts it
    running. */
 static void
@@ -75,6 +91,7 @@ start_process (void *aux)
 {
   struct intr_frame if_;
   struct load_info * _load = (struct load_info *)aux;
+  bool success;
 
   if( _load == NULL )
   {
@@ -86,7 +103,28 @@ start_process (void *aux)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  _load->success = load (_load->file, &if_.eip, &if_.esp);
+  success = load (_load->file, &if_.eip, &if_.esp);
+
+  /* Allocate exit status information */
+  _load->exit_status = malloc( sizeof( *_load->exit_status ) );
+
+  if( !success || _load->exit_status == NULL )
+  {
+    success = false;
+  }
+  else
+  {
+    _load->exit_status->exit_code = 0xFFFFFFFF;
+    _load->exit_status->refs = 2;
+    
+    _load->exit_status->tid = thread_current()->tid;
+    thread_current()->exit_status = _load->exit_status;
+    lock_init( &_load->exit_status->lock );
+    sema_init( &_load->exit_status->wait_sema, 0 );
+  }
+
+  _load->success = success;
+  sema_up(&_load->load_done);
 
   /* If load failed, quit. */
   if (!_load->success) 
@@ -109,13 +147,25 @@ start_process (void *aux)
    been successfully called for the given TID, returns -1
    immediately, without waiting. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid ) 
 {
-  /* Temporary solution to allow process to execute before pintos dies :( */
-  /* TODO: actually implement this function */
-  while (1)
-  {}
-  
+  struct list_elem *e;
+  struct thread *t; 
+  struct exit_info *exit_status;  
+  int exit_code;
+
+  t = thread_current();  
+ 
+  for( e = list_begin( &t->children); e != list_end( &t->children );
+       e = list_next( e ) )
+  {
+    exit_status = list_entry( e, struct exit_info, elem );
+    if( exit_status->tid == child_tid )
+    {
+      list_remove( e );
+      sema_down(&exit_status->wait_sema);
+    }
+  }
   return -1;
 }
 
@@ -125,10 +175,29 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  
+  struct exit_info * exit_status;
+  struct list_elem * e;
+  struct list_elem * next;
+
   /* Print process termination message*/
-  printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
+  printf ("%s: exit(%d)\n", cur->name, cur->exit_code);
   
+  exit_status = cur->exit_status;
+  if( exit_status != NULL )
+  {
+    exit_status->exit_code = cur->exit_code;
+    sema_up( &exit_status->wait_sema );
+    free_child( exit_status );
+  }
+
+  for (e = list_begin (&cur->children); e != list_end (&cur->children);
+       e = next) 
+  {
+    exit_status = list_entry (e, struct exit_info, elem);
+    next = list_remove (e);
+    free_child (exit_status);
+  }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -162,7 +231,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
