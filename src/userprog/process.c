@@ -491,7 +491,8 @@ setup_stack (void **esp, char const **argv, int argc)
         *p8_sp -= pad_bytes;
 
         /* Guarantee that argv[argc] is null as defined by standard */
-        asm volatile ("pushl $0");
+        *p8_sp -= 4;
+        **p32_sp = 0;
         
         /* Push pointers to arguments that were just pushed */
         uint8_t * arg_stack_addr = PHYS_BASE;
@@ -512,7 +513,8 @@ setup_stack (void **esp, char const **argv, int argc)
         **p32_sp = argc;
         
         /* Push null return address to maintain stack format.  Entry function will never return. */  
-        asm volatile ("pushl $0");
+        *p8_sp -= 4;
+        **p32_sp = 0;
       }
       else
       {
