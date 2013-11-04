@@ -88,7 +88,7 @@ process_execute (const char *cmd_str)
 
   if( _load.success )
   {
-    list_push_back (&thread_current ()->children, _load.exit_status );
+    list_push_back (&thread_current ()->children, &_load.exit_status->elem );
   }
   else
   {
