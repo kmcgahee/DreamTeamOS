@@ -89,12 +89,19 @@ syscall_handler (struct intr_frame *f)
   const struct syscall *sc;
   unsigned call_nr;
   int args[3];
+
   /* Get the system call. */
+  if( (uint32_t)f->esp > PHYS_BASE || (uint32_t)f->esp < (uint32_t)0x08048000 )
+  {
+  sys_exit( -1 );
+  }
+
   copy_in (&call_nr, f->esp, sizeof call_nr);
   if( call_nr >= sizeof syscall_table / sizeof *syscall_table)
   {
-    thread_exit ();
+    sys_exit( -1 );
   }
+
   sc = syscall_table + call_nr;
   
   /* Get the system call arguments */
@@ -167,7 +174,6 @@ put_user (uint8_t *udst, uint8_t byte)
 static void
 copy_in (void * dest, const void * src, size_t size)
 {
-  // TODO: optimize / improve structure
   uint8_t i;
   int temp;
   for( i=0; i < size; i++ )
@@ -180,7 +186,7 @@ copy_in (void * dest, const void * src, size_t size)
       if( temp < 0 )
       {
         /* Segfault, exit thread */
-        thread_exit();
+        sys_exit( -1 );
       }
       
       *((uint8_t*)dest) = temp;
@@ -188,7 +194,7 @@ copy_in (void * dest, const void * src, size_t size)
     else
     {
       /* User memory ptr invalid */
-      thread_exit();
+      sys_exit( -1 );
     }
 
     /* Increment ptr to get next byte */
@@ -207,11 +213,10 @@ static char * copy_in_string (const char *us)
   int i;
   int temp;
 
-  // TODO: add comments, possibly optimize.
   ks = palloc_get_page(0);
   if( ks == NULL )
   {
-    thread_exit();
+    sys_exit(-1);
   }
   
   for( i = 0; i < PGSIZE; i++ )
@@ -222,7 +227,7 @@ static char * copy_in_string (const char *us)
       if( temp < 0 )
       {
         palloc_free_page (ks);
-        thread_exit();
+        sys_exit( -1 );
       }
       
       ks[i] = temp;
@@ -235,7 +240,7 @@ static char * copy_in_string (const char *us)
     else
     {
       palloc_free_page (ks);
-      thread_exit();
+      sys_exit( -1 );
     }
   }
 
@@ -246,7 +251,6 @@ static char * copy_in_string (const char *us)
 static void
 sys_halt (void)
 {
-  printf( "sys_halt() not implemented.\n" );
   thread_exit();
 }
 
