@@ -470,6 +470,7 @@ sys_close (int handle)
   lock_file_system();
   file_close (fd->file);
   list_remove( &fd->elem );
+  free( fd );
   unlock_file_system();
 }
 
