@@ -150,7 +150,7 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   /* Handle bad dereferences from system call implementation. */
-  if( fault_addr == NULL || fault_addr > PHYS_BASE )
+  if( fault_addr == NULL || is_kernel_vaddr( fault_addr ) )
   {
     thread_exit();
   }

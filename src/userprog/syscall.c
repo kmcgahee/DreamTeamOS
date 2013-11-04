@@ -91,7 +91,7 @@ syscall_handler (struct intr_frame *f)
   int args[3];
 
   /* Get the system call. */
-  if( (uint32_t)f->esp > PHYS_BASE || (uint32_t)f->esp < (uint32_t)0x08048000 )
+  if( is_kernel_vaddr(f->esp) || (uint32_t)f->esp < (uint32_t)0x08048000 )
   {
     thread_exit();
   }
@@ -183,7 +183,7 @@ copy_in (void * dest, const void * src, size_t size)
   {
     /* Verify source address is below PHYS_BASE */
     /* and byte is successfully copied          */
-    if( src < PHYS_BASE )
+    if( is_user_vaddr( src ) )
     {
       temp = get_user( src );
       if( temp < 0 )
@@ -223,7 +223,7 @@ static char * copy_in_string (const char *us)
   
   for( i = 0; i < PGSIZE; i++ )
   {
-    if( us + i < PHYS_BASE )
+    if( is_user_vaddr( us + i ) )
     {
       temp = get_user( us + i );
       if( temp < 0 )
