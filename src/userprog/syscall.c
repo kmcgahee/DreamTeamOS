@@ -113,7 +113,9 @@ syscall_handler (struct intr_frame *f)
   f->eax = sc->func (args[0], args[1], args[2]);
 }
 
-
+/* Opens the file called "ufile". Returns nonnegative integer handle
+   called a "file descriptor" if successful or -1 if the file could
+   not be opened. */
 static int
 sys_open (const char *ufile)
 {
@@ -253,7 +255,8 @@ sys_halt (void)
 {
   thread_exit();
 }
-
+/* Sets the exit code for the current thread as "status"
+   in the thread structure and calls thread_exit. */
 static void
 sys_exit (int status)
 {
@@ -279,7 +282,10 @@ static int sys_wait (pid_t pid)
   return process_wait ( pid );
 }
 
-static bool sys_create (const char *file, unsigned initial_size)
+/* Creates a new file of size "initial_size" named "file". Returns
+   true if successful, false otherwise. */
+static bool
+sys_create (const char *file, unsigned initial_size)
 {
     /* Copy filename string from user to kernel memory */
     char *kernel_file = copy_in_string (file);
@@ -294,7 +300,11 @@ static bool sys_create (const char *file, unsigned initial_size)
     
     return create_success; 
 }
-static bool sys_remove (const char *file)
+
+/* Deletes the file called "file". Returns true if successful,
+   false otherwise. NOTE: Removing the file does not close it. */
+static bool
+sys_remove (const char *file)
 {
     /* Copy filename string from user to kernel memory */
     char *kernel_file = copy_in_string (file);
