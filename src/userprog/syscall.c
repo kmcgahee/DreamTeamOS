@@ -216,9 +216,9 @@ static char * copy_in_string (const char *us)
   
   for( i = 0; i < PGSIZE; i++ )
   {
-    if( us < PHYS_BASE )
+    if( us + i < PHYS_BASE )
     {
-      temp = get_user( us );
+      temp = get_user( us + i );
       if( temp < 0 )
       {
         palloc_free_page (ks);
