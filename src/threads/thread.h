@@ -124,7 +124,8 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     int exit_code;
-    struct exit_info * exit_status;                    /* Process exit status */
+    struct exit_info * exit_status;     /* Process exit status */
+    struct file *exec_file;
     
     /* Owned by userprog/syscall.c. */
     struct list fds;                    /* List of file descripters */

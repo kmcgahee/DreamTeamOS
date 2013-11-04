@@ -219,6 +219,9 @@ process_exit (void)
 
   /* Print process termination message*/
   printf ("%s: exit(%d)\n", cur->name, cur->exit_code);
+
+  /* Close file which will allow writes again */
+  file_close (cur->exec_file);
   
   exit_status = cur->exit_status;
   if( exit_status != NULL )
@@ -364,11 +367,15 @@ load (struct load_info const *load_info, void (**eip) (void), void **esp)
   
   /* Open executable file. */
   file = filesys_open (file_name);
+  t->exec_file = file;
+
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  file_deny_write (file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -453,7 +460,6 @@ load (struct load_info const *load_info, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 
