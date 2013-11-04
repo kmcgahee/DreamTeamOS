@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -216,13 +217,17 @@ process_exit (void)
   struct exit_info * exit_status;
   struct list_elem * e;
   struct list_elem * next;
+  struct file_descriptor * fd;
 
   /* Print process termination message*/
   printf ("%s: exit(%d)\n", cur->name, cur->exit_code);
 
   /* Close file which will allow writes again */
   file_close (cur->exec_file);
-  
+
+  /* Free all file descriptors held by exiting thread */
+  close_all_fds();
+    
   exit_status = cur->exit_status;
   if( exit_status != NULL )
   {

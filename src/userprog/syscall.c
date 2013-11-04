@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
 
+
 /* File metadata that allows threads to track different files on the filesystem. */
 struct file_descriptor
 {
@@ -496,6 +497,25 @@ get_file_descriptor (int handle)
     }
     
     return NULL; /* Couldn't find matching handle */
+}
+
+/* Closes all FDs held by current thread */
+void close_all_fds(void)
+{
+  struct thread * cur = thread_current();
+  struct file_descriptor * fd;
+  struct list_elem * e;
+  lock_file_system();
+  e = list_begin (&cur->fds);
+  while ( e != list_end (&cur->fds) )
+  {
+    fd = list_entry( e, struct file_descriptor, elem ); // 100% plz
+    file_close (fd->file);
+    e = list_next (e);
+    list_remove( &fd->elem );
+    free( fd );
+  }
+  unlock_file_system();
 }
 
 /* Locks the file system to be owned by current thread.
