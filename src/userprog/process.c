@@ -179,7 +179,7 @@ process_wait (tid_t child_tid )
 {
   struct list_elem *e;
   struct thread *t; 
-  struct exit_info *exit_status;  
+  struct exit_info *exit_status;
 
   t = thread_current();  
  
@@ -191,6 +191,7 @@ process_wait (tid_t child_tid )
     {
       list_remove( e );
       sema_down(&exit_status->wait_sema);
+      return exit_status->exit_code;
     }
   }
   return -1;
