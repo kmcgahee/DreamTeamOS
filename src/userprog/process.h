@@ -3,6 +3,7 @@
 
 #include "threads/thread.h"
 
+#define MAX_ARG_LEN ((unsigned int)512)
 #define MAX_NUM_ARGS ((unsigned int)32)
 
 tid_t process_execute (const char *cmd_str);

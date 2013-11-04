@@ -30,19 +30,51 @@ Jacob Kongs    jmkongs@ksu.edu
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+This struct was created as a way to pass information to the newly created thread so it knows
+what arguments to push to the stack.
+
+struct load_info
+{
+  char *argv[MAX_NUM_ARGS];
+  int argc;
+  struct semaphore load_done;
+  bool success;
+  struct exit_info * exit_status;
+};
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+In process_execute() the input string is tokenized into a filename and any 
+additional parameters.  The filename and used to name the new thread and all 
+the arguments are passed to the newly created thread.
+
+The elements of argv are pushed to the stack in reverse order so when reading
+off the arguments the process will read them in the correct order.
+
+In order to avoid overflowing the maximum number of bytes that is allowed for a 
+command string is 512.  If any command string exceeds this then a nul character is 
+inserted so when the string is tokenized it will stop before reading in all the commands.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+The strtok_r() function is a reentrant version strtok(). It's important because multiple 
+threads may end up tokenizing strings at the same time, which should not have an effect on
+one another.
+
 >> A4: In Pintos, the kernel separates commands into an executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+
+One advantage of splitting in the shell is the executable can be checked if
+it exists before making calls into the kernel to run it. A safety advantage
+is the shell can check for large executable names to avoid users from possibly
+corrupting the stack.
 
                              SYSTEM CALLS
                              ============
@@ -52,14 +84,90 @@ Jacob Kongs    jmkongs@ksu.edu
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+The exit_info provides context information for when a thread exits.
+
+struct exit_info
+{
+  int exit_code;
+  tid_t tid;
+  struct lock lock;
+  int refs;
+  struct semaphore wait_sema;
+  struct list_elem elem;
+};
+
+The load_info struct provides arguments for the stack setup and
+synchronization when loading.
+
+struct load_info
+{
+  char *argv[MAX_NUM_ARGS];
+  int argc;
+  struct semaphore load_done;
+  bool success;
+  struct exit_info * exit_status;
+};
+
+The file_descriptor struct associates handles with the actual file system information.
+
+struct file_descriptor
+{
+    int handle;            /* Handle # of file (also referred to as a file descriptor) */
+    struct file * file;    /* File system information */
+    struct list_elem elem; /* List element for list in 'struct thread' */
+};
+
+We modified the thread structure to track file, exit and children info.
+
+struct thread
+  {
+    ...
+    ...
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+    int exit_code;
+    struct exit_info * exit_status;     /* Process exit status */
+    
+    /* Owned by userprog/syscall.c. */
+    struct list fds;                    /* List of file descripters */
+    int next_handle;                    /* Next handle # to assign file to. */
+    struct list children;               /* List of child threads */
+#endif
+    ...
+    ...  
+  };
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+When a new file is opened a handle is associate with it along with file info.
+This data is wrapped in the 'file_descriptor' struct and saved in a list stored
+in each thread.
+
+File descripters are unique within a single process.  Thus a file descripter of
+'3' references a different file depending on which process you're in.
+
+The first 3 file descripters are reserved for standard in, out, and error.
+
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+We have two similar functions 'copy_in' and 'copy_in_string' which
+copies in a buffer/string from user memory into kernel memory.
+When copying in a string the size is limited to a page size to avoid
+copying in really large strings.  If either function fails due to a segfault
+or invalid pointer then the thread is killed.
+
+Both of these function call off to a helper function 'get_user' which
+reads in a single byte.
+
+For writing data a 'put_user' function was implemented that writes a 
+single byte to a user buffer.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -68,8 +176,17 @@ Jacob Kongs    jmkongs@ksu.edu
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+We did not deal with paging user data in this project so I'm not sure
+how to answer this question correctly.
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+The wait system calls calls off to process_wait() which finds the
+child process on which to wait.  It will then wait for it to die 
+by calling sema down on the exit semaphore associated with that 
+child.  When the child process dies it will call sema up which will
+allow the parent to continue executing.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -92,6 +209,8 @@ Jacob Kongs    jmkongs@ksu.edu
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
+
+
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
 >> calls wait(C) before C exits?  After C exits?  How do you ensure
@@ -104,11 +223,30 @@ Jacob Kongs    jmkongs@ksu.edu
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+By implementing access to user memory through a few interface calls
+(ie copy_in()) this allows us to only have to do error handling / memory
+validation in one spot instead of in every function that needs to access
+user memory.  This leads to less chance for error and less code duplication.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+The advantages to using a struct that wraps both the handle and the
+file info along with a list element is that it allows smaller data
+structures to be extended without modifying them.  Thus a file info
+structure defined by the file system doesn't have to be modfied to
+accompany file handles and list elements.
+
+Another advantage is it allows the threads to hold a list of file 
+descriptors associated with that thread. 
+
+A disadvantage to this design is whenever a file handle is used to find
+a file descriptor element that it requires linear lookup time. 
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We did not change this identity mapping between tid_t and pid_t.
 
                            SURVEY QUESTIONS
                            ================

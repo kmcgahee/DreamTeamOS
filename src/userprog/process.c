@@ -54,6 +54,12 @@ process_execute (const char *cmd_str)
   strlcpy (cmd_str_copy, cmd_str, PGSIZE);
   
   sema_init ( &_load.load_done, 0 );
+ 
+  /* Prevent long arguments from overflowing the stack */
+  if (strlen (cmd_str_copy) > MAX_ARG_LEN)
+  {
+    cmd_str_copy[MAX_ARG_LEN-1] = '\0';
+  }
 
   /* Split command string into filename and arguments */
   for (i = 0, token = strtok_r (cmd_str_copy, " ", &save_ptr);
