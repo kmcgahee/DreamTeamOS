@@ -119,11 +119,13 @@ start_process (void *aux)
 {
   struct intr_frame if_;
   struct load_info * _load = (struct load_info *)aux;
+  struct thread * cur = thread_current();
   bool success;
 
   if( _load == NULL )
   {
-    thread_exit ();
+    cur->exit_code = -1;
+    thread_exit();
   }  
 
   /* Initialize interrupt frame and load executable. */
@@ -145,8 +147,8 @@ start_process (void *aux)
     _load->exit_status->exit_code = 0xFFFFFFFF;
     _load->exit_status->refs = 2;
     
-    _load->exit_status->tid = thread_current()->tid;
-    thread_current()->exit_status = _load->exit_status;
+    _load->exit_status->tid = cur->tid;
+    cur->exit_status = _load->exit_status;
     lock_init( &_load->exit_status->lock );
     sema_init( &_load->exit_status->wait_sema, 0 );
   }
@@ -155,9 +157,11 @@ start_process (void *aux)
   sema_up(&_load->load_done);
 
   /* If load failed, quit. */
-  if (!_load->success) 
-    thread_exit ();
-
+  if (!_load->success)
+  {
+    cur->exit_code = -1;
+    thread_exit();
+  }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
