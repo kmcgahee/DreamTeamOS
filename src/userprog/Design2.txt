@@ -142,14 +142,14 @@ struct thread
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
 
-When a new file is opened a handle is associate with it along with file info.
+When a new file is opened a handle is associated with it along with file info.
 This data is wrapped in the 'file_descriptor' struct and saved in a list stored
 in each thread.
 
-File descripters are unique within a single process.  Thus a file descripter of
+File descriptors are unique within a single process.  Thus a file descriptor of
 '3' references a different file depending on which process you're in.
 
-The first 3 file descripters are reserved for standard in, out, and error.
+The first 3 file descriptors are reserved for standard in, out, and error.
 
 
 ---- ALGORITHMS ----
