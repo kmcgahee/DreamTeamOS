@@ -600,6 +600,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->fds);
   t->next_handle = 3;
   t->exit_status = NULL;
+  t->exit_code = -1;
 #endif
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);

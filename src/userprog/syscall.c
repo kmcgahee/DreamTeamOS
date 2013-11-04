@@ -93,13 +93,14 @@ syscall_handler (struct intr_frame *f)
   /* Get the system call. */
   if( (uint32_t)f->esp > PHYS_BASE || (uint32_t)f->esp < (uint32_t)0x08048000 )
   {
-  sys_exit( -1 );
+    thread_exit();
   }
 
   copy_in (&call_nr, f->esp, sizeof call_nr);
   if( call_nr >= sizeof syscall_table / sizeof *syscall_table)
   {
-    sys_exit( -1 );
+    thread_exit();
+
   }
 
   sc = syscall_table + call_nr;
@@ -187,16 +188,15 @@ copy_in (void * dest, const void * src, size_t size)
       temp = get_user( src );
       if( temp < 0 )
       {
-        /* Segfault, exit thread */
-        sys_exit( -1 );
+        /* Exit thread */
+        thread_exit();
       }
-      
+
       *((uint8_t*)dest) = temp;
     }
     else
     {
-      /* User memory ptr invalid */
-      sys_exit( -1 );
+      thread_exit();
     }
 
     /* Increment ptr to get next byte */
@@ -218,7 +218,7 @@ static char * copy_in_string (const char *us)
   ks = palloc_get_page(0);
   if( ks == NULL )
   {
-    sys_exit(-1);
+    thread_exit();
   }
   
   for( i = 0; i < PGSIZE; i++ )
@@ -229,11 +229,10 @@ static char * copy_in_string (const char *us)
       if( temp < 0 )
       {
         palloc_free_page (ks);
-        sys_exit( -1 );
+        thread_exit();
       }
-      
+    
       ks[i] = temp;
-
       if( ks[i] == '\0' )
       {
         return ks;
@@ -242,7 +241,7 @@ static char * copy_in_string (const char *us)
     else
     {
       palloc_free_page (ks);
-      sys_exit( -1 );
+      thread_exit();
     }
   }
 
@@ -349,6 +348,11 @@ sys_read (int handle, void *buffer, unsigned size)
 
   if (!buffer)
       return -1;
+
+  if( buffer > PHYS_BASE )
+  {
+    thread_exit();
+  }
   
   if (handle == 0) /* Read in from keyboard */
   {
@@ -405,13 +409,15 @@ sys_write (int handle, const char *buffer, unsigned int size)
     fd = get_file_descriptor (handle);
     
     if (!fd)
+    {
       return -1; /* Error finding file descriptor */
-    
+    }
+
     lock_file_system();
     bytes_written = file_write (fd->file, buffer, size);
     unlock_file_system();
   }
-  
+
   return bytes_written;
 }
 
@@ -463,6 +469,7 @@ sys_close (int handle)
   
   lock_file_system();
   file_close (fd->file);
+  list_remove( &fd->elem );
   unlock_file_system();
 }
 
