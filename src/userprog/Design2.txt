@@ -211,7 +211,7 @@ get_user(), the address is verified to be within user memory space.  This is to
 avoid having page_fault() call thread_exit() as it needs to return -1 back to the
 kernel so that the kernel can clean up allocated kernel space pages.
 
-Another error case is when a userprogram trys to read or write to NULL. If this
+Another error case is when a user program trys to read or write to NULL. If this
 ever happens, then the page_fault() calls thread_exit().  The same thing happens
 if a user program attempts to access memory outside of the user space.  Since
 these errors are not triggered in kernel space, it's safe to just exit the thread
@@ -228,11 +228,11 @@ when exit_status deallocations occur.  This is explained below in more detail.
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
-The load_info structure that has the information required to load a file.
+The load_info structure has the information required to load a file.
 It also has a load sempahore and a success field.  The semaphore is used
 to block within the exec() call to ensure not returning until the program
 has been loaded.  Once either a success or fail load has been determined,
-sema_up is called on the load semaphore and execution resumes in exec() where
+sema_up() is called on the load semaphore and execution resumes in exec() where
 the return value is then returned either the TID set in the load structure or
 -1 if the success value is not true.
 
@@ -246,10 +246,10 @@ the return value is then returned either the TID set in the load structure or
 When a child thread is created, its exit_info structure is added to its list
 of children in the parent thread.  This has an exit semaphore and exit code for
 child.  The exit semaphore is used to wait on a child executing.  If C has not
-exited yet when P calls wait(C), then sema_down is called ona semaphore that is
+exited yet when P calls wait(C), then sema_down() is called on a semaphore that is
 initialized to 0, so it blocks.  Then when the child thread is exited (either by
 calling sys_exit() or being killed, the semaphore is up'd and the parent can continue.
-After call sema_up, it calls free_child().  The exit_info semaphore keeps track of the
+After call sema_up(), it calls free_child().  The exit_info semaphore keeps track of the
 number of references held against it.  This number is synchronized via a lock.  The
 number of reference is always 0, 1, or 2 as each process's exit_info has a reference
 by its parent and itself.  Upon exiting, each thread calls free_child() on its own
