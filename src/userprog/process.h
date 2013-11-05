@@ -3,7 +3,10 @@
 
 #include "threads/thread.h"
 
-tid_t process_execute (const char *file_name);
+#define MAX_ARG_LEN ((unsigned int)512)
+#define MAX_NUM_ARGS ((unsigned int)32)
+
+tid_t process_execute (const char *cmd_str);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);

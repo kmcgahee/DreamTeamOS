@@ -85,6 +85,17 @@ struct sleep_context
     struct list_elem elem;   /* List element for context of sleeping threads. */
 };
 
+/* Exit status information */
+struct exit_info
+{
+  int exit_code;
+  tid_t tid;
+  struct lock lock;
+  int refs;
+  struct semaphore wait_sema;
+  struct list_elem elem;
+};
+
 /* The `elem' member has a dual purpose.  It can be an element in
    the run queue (thread.c), or it can be an element in a
    semaphore wait list (synch.c).  It can be used these two ways
@@ -112,6 +123,14 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    int exit_code;
+    struct exit_info * exit_status;     /* Process exit status */
+    struct file *exec_file;
+    
+    /* Owned by userprog/syscall.c. */
+    struct list fds;                    /* List of file descripters */
+    int next_handle;                    /* Next handle # to assign file to. */
+    struct list children;               /* List of child threads */
 #endif
 
     /* Owned by thread.c. */
